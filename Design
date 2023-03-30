@@ -1,0 +1,274 @@
+%code for 200 bar - pressure accounted for
+
+Fn2= 370.0670877; %total feed flowrate for nitrogen kmol/hr - ALTER
+Fh2 = 1099.10744;%total feed flowrate for hydrogen kmol/hr - ALTER
+FNH3 = 13.7396902;%total feed flowrate for ammonia kmol/hr - ALTER
+FAr = 38.031116; %total feed flowrate for argon kmol/hr - ALTER
+F = Fn2 + Fh2 + FNH3 + FAr; %total feed flow kmol/hr
+alpha=0.5; %Temkin parameter
+E=1.7056E5; %activation energy
+R=8.314; %ideal gas contant
+ko=8.85E14; %Arrhenius constant
+Patm0 =197.385; %operating pressure atm 
+Pkpa0 = 20000; %operating pressure kPa
+rhobed1 = 33.4717; %inlet to bed kg/m3 - ALTER
+viscbed1 = 2.74E-5; %viscosity inlet Pas - ALTER
+e = 0.45; %void
+Q = 0.1190; %volumetric flow rate m3/s - ALTER
+A=0.5; % cross-sectional area of packed bed m^2 - ALTER
+q = Q/A; %velocity m/s - ALTER
+dp = 0.006; %catalyst diameter m
+dPdL = (150*((viscbed1*q)/dp^2)*((1-e)^2)/e^3) + (1.75*((rhobed1*q^2)/dp)*((1-e)/e^3)); %pressure drop Pa/m
+dPkpadL = dPdL/1000;
+dPatmdL = dPdL/101325;
+b0=-8.2125534; %coefficients for effectiveness factor 
+b1=0.03774149;%coefficients for effectiveness factor
+b2=6.190112;%coefficients for effectiveness factor
+b3=-5.354571E-5;%coefficients for effectiveness factor
+b4=-20.86963;%coefficients for effectiveness factor
+b5=2.379142E-8;%coefficients for effectiveness factor
+b6=27.88403;%coefficients for effectiveness factor
+T0=673;%initial temperature
+YH2= Fh2/F;%initial mole fraction of hydrogen - ALTER
+YN2= Fn2/F;%initial mole fraction of nitrogen - ALTER
+YNH3= FNH3/F;%initial mole fraction of ammonia - ALTER
+YAr = FAr/F; %inital mole fraction of argon - ALTER
+dL=0.1;
+L=0:dL:20;%setting range for integration
+
+RNH3=zeros(size(L));%rate of ammonia formation
+aH2=zeros(size(L)); %activation coefficient of hydrogen
+aN2=zeros(size(L));%activation coefficient of nitrogen
+aNH3=zeros(size(L));%activation coefficient of ammonia 
+k= zeros(size(L)); %reaction contant (from arrhenius equation)
+ka=zeros(size(L));%equilbrium contant
+fugH2=zeros(size(L)); %fugacity coefficient for hydrogen
+fugN2=zeros(size(L));%fugacity coefficient for nitrogen
+fugNH3=zeros(size(L));%fugacity coefficient for ammonia
+yN2=zeros(size(L)); % mole fraction of nitrogen at every step change
+yH2=zeros(size(L));% mole fraction of hydrogen at every step change 
+yNH3=zeros(size(L));% mole fraction of ammonia at every step change
+Hr=zeros(size(L)); %heat of reaction
+N=zeros(size(L)); %effectiveness factor 
+T=zeros(size(L)); %temperature at every step change
+X=zeros(size(L));%conversion at every step change 
+Patm=zeros(size(L));%pressure atm at every step change
+Pkpa=zeros(size(L));%pressure kpa at every step change
+Cp=zeros(size(L));%heat capacity at every step change 
+X(1)=0;%initial conversion set to 0
+T(1)=T0;
+Patm(1) = Patm0;
+Pkpa(1) = Pkpa0;
+n=numel(X);
+
+for i=1:n-1
+
+   N(i)= b0+b1*T(i)+b2*X(i)+b3*(T(i)^2)+b4*(X(i)^2)+b5*(T(i)^3)+b6*(X(i)^3);
+   fugN2(i)=0.93431737+(0.2028538E-3)*T(i)+(0.295896E-3)*Patm(i) -(0.270727E-6)*(T(i)^2)+(0.4775207E-6)*Patm(i)^2;
+   fugH2(i)=exp(exp(-3.8402*(T(i)^0.125)+0.541)*Patm(i) -exp(-0.1263*(T(i)^0.5)-15.98)*Patm(i)^2+ 300*exp(-0.011901*T(i)-5.941)*exp(-Patm(i)/300));
+   fugNH3(i)= 0.1438996+0.002028538*T(i)-(0.4487672E-3)*Patm(i) -(0.1142945E-5)*(T(i)^2)+(0.2761216E-6)*Patm(i)^2;
+   Hr(i)=4.184*(-Patm(i)*(0.54526+(840.609/T(i))+((459.734*10^6)/(T(i)^3)))-5.34685*T(i)-0.0002525*(T(i)^2)+0.00000169167*(T(i)^3)-9157.09); %kJ/kmol
+   Cp(i)=35.31+(0.02*T(i))+(0.00000694*T(i)^2)-(0.0056*Pkpa(i))+(0.000014*Pkpa(i)*T(i)); %kJ/kmol
+   yN2(i)=(YN2*(1-X(i)))/(1-(2*X(i)*YN2));
+   yH2(i)=(YH2-(3*X(i)*YN2))/(1-(2*X(i)*YN2));
+   yNH3(i)=(YNH3+(2*X(i)*YN2))/(1-(2*X(i)*YN2));
+   aH2(i)=yH2(i)*fugH2(i)*Patm(i);
+   aN2(i)=yN2(i)*fugN2(i)*Patm(i);
+   aNH3(i)=yNH3(i)*fugNH3(i)*Patm(i);
+   k(i)= ko*exp(-E/(R*T(i))); %unitless
+   ka(i)=10^((-2.691122*(log10(T(i)))-((5.519265E-5)*T(i))+((1.848863E-7)*T(i)^2)+(2001.6/T(i))+2.689)); %unitless
+
+   RNH3(i)=(2*k(i)*((ka(i)^2 *aN2(i)*((aH2(i)^3/aNH3(i)^2)^alpha)-((aNH3(i)^2/aH2(i)^3)^(1-alpha))))); %kmol/m3h
+
+   dTdL=(N(i)*(-Hr(i))*A*RNH3(i))/(F*Cp(i));
+
+   dXdL=(N(i)*RNH3(i)*A)/(Fn2*2);
+
+   X(i+1)=X(i)+(dL*dXdL);
+   T(i+1)=T(i)+(dL*dTdL);
+   Patm(i+1) = Patm(i) - (dL*dPatmdL);
+   Pkpa(i+1) = Pkpa(i) - (dL*dPkpadL);
+
+end
+
+
+tiledlayout(2,2);
+
+nexttile
+plot(L,T)
+hold on
+title("Reactor 1 Temperature vs Length");
+grid on
+grid minor
+hold off
+
+nexttile
+plot(L,X)
+hold on
+title("Reactor 1 Conversion vs length");
+grid on
+grid minor
+hold off
+
+nexttile
+plot(L,RNH3)
+hold on
+title("Reactor 1 Rate vs Length");
+grid on
+grid minor
+hold off
+
+nexttile
+plot(L,ka)
+hold on
+title("Reactor 1 Equilibrium vs Length")
+grid on
+grid minor
+hold off
+
+desiredX = interp1(L,X,4)
+desiredT = interp1(L,T,4)
+desiredRNH3 = interp1(L,RNH3,4)
+desiredPatm = interp1(L,Patm,4)
+desiredPkpa = interp1(L,Pkpa,4)
+
+
+
+
+Reactedmoles = Fn2*desiredX;
+newFn2out = Fn2 - Reactedmoles;
+newFn2 = newFn2out;
+newFh2out = Fh2 - (3*Reactedmoles);
+newFNH3out = FNH3 + (2*Reactedmoles);
+newFh2 = newFh2out;
+newFNH3 = newFNH3out;
+newFAr = FAr;
+newF = newFn2 + newFh2 + newFNH3 + newFAr;
+newYH2 = newFh2/newF;
+newYN2 = newFn2/newF;
+newYNH3 = newFNH3/newF;
+newYAr = newFAr/newF;
+newA = 0.6; %can change
+rhobed2 = 33.4717;
+viscbed2 = 2.74E-5;
+Qbed2 = 0.119042;
+qbed2 = Qbed2/newA;
+dPbed2dL = (150*((viscbed2*qbed2)/dp^2)*((1-e)^2)/e^3) + (1.75*((rhobed2*qbed2^2)/dp)*((1-e)/e^3)); %pressure drop Pa/m
+dPkpanewdL = dPbed2dL/1000;
+dPatmnewdL = dPbed2dL/101325;
+
+
+%conversion still starting at 0, temp at 673K
+RNH3new=zeros(size(L));%rate of ammonia formation
+aH2new=zeros(size(L)); %activation coefficient of hydrogen
+aN2new=zeros(size(L));%activation coefficient of nitrogen
+aNH3new=zeros(size(L));%activation coefficient of ammonia 
+knew = zeros(size(L)); %reaction contant (from arrhenius equation)
+kanew =zeros(size(L));%equilbrium contant
+fugH2new =zeros(size(L)); %fugacity coefficient for hydrogen
+fugN2new =zeros(size(L));%fugacity coefficient for nitrogen
+fugNH3new =zeros(size(L));%fugacity coefficient for ammonia
+yN2new =zeros(size(L)); % mole fraction of nitrogen at every step change
+yH2new =zeros(size(L));% mole fraction of hydrogen at every step change 
+yNH3new =zeros(size(L));% mole fraction of ammonia at every step change
+Hrnew =zeros(size(L)); %heat of reaction
+Nnew =zeros(size(L)); %effectiveness factor 
+Tnew =zeros(size(L)); %temperature at every step change
+Xnew =zeros(size(L));%conversion at every step change 
+Patmnew=zeros(size(L));%pressure atm at every step change
+Pkpanew=zeros(size(L));%pressure kpa at every step change
+Cpnew =zeros(size(L));%heat capacity at every step change 
+Xnew(1)=0;%initial conversion set to 0
+Tnew(1)= 673;
+Patmnew (1) = desiredPatm;
+Pkpanew(1)  = desiredPkpa;
+n=numel(Xnew);
+
+for i=1:n-1
+
+   Nnew(i)= b0+b1*Tnew(i)+b2*Xnew(i)+b3*(Tnew(i)^2)+b4*(Xnew(i)^2)+b5*(Tnew(i)^3)+b6*(Xnew(i)^3);
+   fugN2new(i)=0.93431737+(0.2028538E-3)*Tnew(i)+(0.295896E-3)*Patmnew(i) -(0.270727E-6)*(Tnew(i)^2)+(0.4775207E-6)*Patmnew(i)^2;
+   fugH2new(i)=exp(exp(-3.8402*(Tnew(i)^0.125)+0.541)*Patmnew(i) -exp(-0.1263*(Tnew(i)^0.5)-15.98)*Patm(i)^2+ 300*exp(-0.011901*Tnew(i)-5.941)*exp(-Patmnew(i)/300));
+   fugNH3new(i)= 0.1438996+0.002028538*Tnew(i)-(0.4487672E-3)*Patmnew(i) -(0.1142945E-5)*(Tnew(i)^2)+(0.2761216E-6)*Patmnew(i)^2;
+   Hrnew(i)=4.184*(-Patmnew(i)*(0.54526+(840.609/Tnew(i))+((459.734*10^6)/(Tnew(i)^3)))-5.34685*Tnew(i)-0.0002525*(Tnew(i)^2)+0.00000169167*(Tnew(i)^3)-9157.09); %kJ/kmol
+   Cpnew(i)=35.31+(0.02*Tnew(i))+(0.00000694*Tnew(i)^2)-(0.0056*Pkpanew(i))+(0.000014*Pkpanew(i)*Tnew(i)); %kJ/kmol
+   yN2new(i)=(newYN2*(1-Xnew(i)))/(1-(2*Xnew(i)*newYN2));
+   yH2new(i)=(newYH2-(3*Xnew(i)*newYN2))/(1-(2*Xnew(i)*newYN2));
+   yNH3new(i)=(newYNH3+(2*Xnew(i)*newYN2))/(1-(2*Xnew(i)*newYN2));
+   aH2new(i)=yH2new(i)*fugH2new(i)*Patmnew(i);
+   aN2new(i)=yN2new(i)*fugN2new(i)*Patmnew(i);
+   aNH3new(i)=yNH3new(i)*fugNH3new(i)*Patmnew(i);
+   knew(i)= ko*exp(-E/(R*Tnew(i))); %unitless
+   kanew(i)=10^((-2.691122*(log10(Tnew(i)))-((5.519265E-5)*Tnew(i))+((1.848863E-7)*Tnew(i)^2)+(2001.6/Tnew(i))+2.689)); %unitless
+
+   RNH3new(i)=(2*knew(i)*((kanew(i)^2 *aN2new(i)*((aH2new(i)^3/aNH3new(i)^2)^alpha)-((aNH3new(i)^2/aH2new(i)^3)^(1-alpha))))); %kmol/m3h
+
+   dTnewdL=(Nnew(i)*(-Hrnew(i))*newA*RNH3new(i))/(newF*Cpnew(i));
+
+   dXnewdL=(Nnew(i)*RNH3new(i)*newA)/(newFn2*2);
+
+   Xnew(i+1)=Xnew(i)+(dL*dXnewdL);
+   Tnew(i+1)=Tnew(i)+(dL*dTnewdL);
+   Patmnew(i+1) = Patmnew(i) - (dL*dPatmnewdL);
+   Pkpanew(i+1) = Pkpanew(i) - (dL*dPkpanewdL);
+
+end
+
+tiledlayout(2,2);
+
+nexttile
+plot(L,Tnew)
+hold on
+title("Reactor 2 Temperature vs Length");
+grid on
+grid minor
+hold off
+
+nexttile
+plot(L,Xnew)
+hold on
+title("Reactor 2 Conversion vs length");
+grid on
+grid minor
+hold off
+
+nexttile
+plot(L,RNH3new)
+hold on
+title("Reactor 2 Rate vs Length");
+grid on
+grid minor
+hold off
+
+
+nexttile
+plot(L,kanew)
+hold on
+title("Reactor 2 Equilibrium vs Length")
+grid on
+grid minor
+hold off
+
+
+desiredXnew = interp1(L,Xnew,7.15)
+desiredTnew = interp1(L,Tnew,7.15)
+desiredRNH3new = interp1(L,RNH3new,7.15)
+desiredPatmnew = interp1(L,Patmnew,7.15)
+desiredPkpanew = interp1(L,Pkpanew,7.15)
+
+Reactedmoles2 = newFn2*desiredXnew; %kmol/hr
+newFn2outbed2 = newFn2 - Reactedmoles2;
+TotalReactedmoles = Reactedmoles + Reactedmoles2; %kmol/hr
+TotalConversion = TotalReactedmoles/(Fn2)
+
+FinalFn2 = (Fn2) - TotalReactedmoles
+FinalFh2 = (Fh2) - (3*TotalReactedmoles)
+FinalFNH3 = (FNH3) + (2*TotalReactedmoles)
+FinalFAr = (FAr)
+FinalF = FinalFn2 + FinalFh2 + FinalFNH3 + FinalFAr
+FinalYN2 = FinalFn2/FinalF
+FinalYH2 = FinalFh2/FinalF
+FinalYNH3 = FinalFNH3/FinalF
+FinalYAr = FinalFAr/FinalF
+
+
